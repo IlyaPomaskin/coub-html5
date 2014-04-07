@@ -1,0 +1,14 @@
+video::-webkit-media-controls-volume-slider,
+video::-webkit-media-controls-mute-button,
+video::-webkit-media-controls-current-time-display,
+video::-webkit-media-controls-time-remaining-display,
+video::-webkit-media-controls-timeline {
+    display: none;
+}
+
+video::-webkit-media-controls-enclosure {
+    width: 100px;
+    position: absolute;
+    right: 10px;
+    bottom: 10px;
+}
