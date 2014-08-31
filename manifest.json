@@ -1,16 +1,16 @@
 {
     "manifest_version": 2,
-
     "name": "Coub HTML5",
+    "version": "1.0",
+
+    "description": "Chrome extension to replace Coub flash player with video tag",
+    "homepage_url": "https://github.com/IlyaPomaskin/coub-html5",
     "author": "Ilya Pomaskin",
     "icons": {
         "16": "logo16.jpg",
         "48": "logo48.jpg",
         "128": "logo128.jpg"
     },
-    "homepage_url": "https://github.com/IlyaPomaskin/coub-html5",
-    "description": "Chrome extension to replace Coub flash player with video tag",
-    "version": "1.0",
 
     "permissions": [
         "http://coub.com/*"

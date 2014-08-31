@@ -2,119 +2,223 @@ window.addEventListener('DOMNodeInserted', function (e) {
     if (e.target.nodeName != 'EMBED' && e.target.nodeName != 'OBJECT')
         return;
 
-    replaceWithHTML5(e.target);
+    CoubHtml5Player(e.target);
 }, false);
 
-document.addEventListener('visibilitychange', function(e){
+document.addEventListener('visibilitychange', function (e) {
     if (e.target.hidden) {
-        pauseAllVideos();
+        pauseAllVideo();
     }
 }, false);
 
-function pauseAllVideos() {
-    var oldVideos = document.getElementsByTagName('video');
-    for (var i = 0; i < oldVideos.length; i++) {
-        oldVideos[i].pause();
+
+function pauseAllVideo(excludeVideoId) {
+    excludeVideoId = excludeVideoId || '';
+
+    var allContainerElements = document.getElementsByClassName('Html5CoubPlayer');
+    for (var i = 0; i < allContainerElements.length; i++) {
+        var containerElement = allContainerElements[i],
+            videoTag = containerElement.getElementsByTagName('video')[0],
+            audioTag = containerElement.getElementsByTagName('audio')[0];
+
+        if (videoTag.id === excludeVideoId) {
+            return;
+        }
+
+        containerElement.dataset.shouldByPlayedAfterLoading = false;
+        videoTag.pause();
+        audioTag.pause();
     }
 }
 
-function replaceWithHTML5(flashObject) {
-    if (flashObject.childElementCount == 0) {
-        console.log('Wrong flash object');
-        return false;
-    }
+function CoubHtml5Player(flashObject) {
+    var CONTAINER_CLASS = 'Html5CoubPlayer',
+        container = document.createElement('div'),
 
-    var playerContainer = flashObject.parentNode,
+        video = document.createElement('video'),
+        audio = document.createElement('audio'),
+
         videoLoaded = false,
         audioLoaded = false,
-        html5video = document.createElement('video'),
-        html5audio = document.createElement('audio'),
         hasExternalAudio = false,
-        json = JSON.parse(decodeURIComponent(flashObject.querySelector('param[name="flashvars"]').value.split('&')[0]).replace(/^json=/, ''));
 
-    if (typeof json !== 'object') {
-        console.log('Empty JSON');
-        return false;
+        json = {};
+
+    if (flashObject.childElementCount == 0) {
+        throw new Error('Wrong flash object.');
     }
 
-    if (json.audio_versions !== undefined && json.audio_versions.template !== undefined) {
-        hasExternalAudio = true;
+    json = getJSON();
+    id = getVideoTagId();
 
-        if (json.audio_versions.versions.indexOf('high') > -1) {
-            html5audio.src = json.audio_versions.template.replace(/%{version}/g, 'high');
-        } else if (json.audio_versions.versions.indexOf('mid') > -1) {
-            html5audio.src = json.audio_versions.template.replace(/%{version}/g, 'mid');
-        } else {
-            html5audio.src = json.audio_versions.template.replace(/%{version}/g, 'low');
-        }
-
-        html5audio.addEventListener('ended', function () {
-            html5audio.currentTime = 0;
-            html5audio.play();
-        }, false);
-
-        html5audio.addEventListener('loadeddata', function () {
-            audioLoaded = true;
-            if (videoLoaded && audioLoaded) {
-                pauseAllVideos();
-                html5video.play();
-            }
-        }, false);
+    if (!json.hasOwnProperty('file_versions') || !json.file_versions.hasOwnProperty('web')) {
+        throw new Error('Can\'t find video in json.');
     }
 
-    if (json.file_versions !== undefined && json.file_versions.web !== undefined) {
-        var html5video_src = document.createElement('source'),
-            src = '';
-
-        if (json.file_versions.web.types.indexOf('mp4') > -1) {
-            src = json.file_versions.web.template.replace(/%{type}/g, 'mp4');
-            html5video_src.setAttribute('type', 'video/mp4');
-        } else {
-            src = json.file_versions.web.template.replace(/%{type}/g, 'flv');
-            html5video_src.setAttribute('type', 'video/x-flv');
-        }
-
-        if (json.file_versions.web.versions.indexOf('big') > -1) {
-            html5video_src.setAttribute('src', src.replace(/%{version}/g, 'big'));
-        } else if (json.file_versions.web.versions.indexOf('med') > -1) {
-            html5video_src.setAttribute('src', src.replace(/%{version}/g, 'med'));
-        } else {
-            html5video_src.setAttribute('src', src.replace(/%{version}/g, 'small'));
-        }
-
-        html5video.appendChild(html5video_src);
-
-        html5video.style.display = 'none';
-        html5video.setAttribute('class', 'html5video');
-        html5video.setAttribute('preload', 'auto');
-        html5video.setAttribute('controls', 'true');
-        html5video.setAttribute('loop', '');
-        html5video.setAttribute('width', playerContainer.offsetWidth);
-        html5video.setAttribute('height', playerContainer.offsetHeight);
-
-        html5video.addEventListener('play', function () {
-            html5audio.play();
-        }, false);
-
-        html5video.addEventListener('pause', function () {
-            html5audio.pause();
-        }, false);
-
-        html5video.addEventListener('loadeddata', function () {
-            videoLoaded = true;
-            html5video.style.display = 'block';
-            if ((!hasExternalAudio || videoLoaded && audioLoaded) && !document.hidden) {
-                pauseAllVideos();
-                html5video.play();
-            }
-        }, false);
-
-        html5video.appendChild(html5audio);
-        playerContainer.replaceChild(html5video, flashObject);
-
-        console.log('Coub ' + json.permalink + ' replaced');
-        return true;
+    if (!json.hasOwnProperty('audio_versions') || !json.audio_versions.hasOwnProperty('template')) {
+        hasExternalAudio = false;
     }
 
-    return false;
+    setupAudioTag();
+    setupVideoTag();
+
+    container.dataset.shouldByPlayedAfterLoading = true;
+    container.setAttribute('class', CONTAINER_CLASS);
+    container.appendChild(audio);
+    container.appendChild(video);
+
+    flashObject.parentNode.replaceChild(container, flashObject);
+
+    console.log('Coub ' + json.permalink + ' replaced');
+
+    function getJSON() {
+        var flashVars = flashObject.querySelector('param[name="flashvars"]'),
+            urlPartWithJSON = flashVars.value.split('&')[0],
+            JSONText = decodeURIComponent(urlPartWithJSON).replace(/^json=/, ''),
+            parsedJSON = JSON.parse(JSONText);
+
+        if (typeof parsedJSON !== 'object') {
+            throw new Error('Empty JSON');
+        }
+
+        return parsedJSON;
+    }
+
+    function canPlay() {
+        var videoWithoutExternalAudioLoaded = !hasExternalAudio && videoLoaded,
+            videoWithExternalAudioLoaded = videoLoaded && audioLoaded,
+            pageVisible = !document.hidden,
+            shouldByPlayedAfterLoading = container.dataset.shouldByPlayedAfterLoading == "true";
+
+        return shouldByPlayedAfterLoading && pageVisible && (videoWithoutExternalAudioLoaded || videoWithExternalAudioLoaded);
+    }
+
+    function getAudioSource() {
+        if (hasExternalAudio == true) {
+            return false;
+        }
+
+        var audioJSON = json.audio_versions,
+            quality;
+
+        if (audioJSON.versions.indexOf('high') > -1) {
+            quality = 'high';
+        } else if (audioJSON.versions.indexOf('mid') > -1) {
+            quality = 'mid';
+        } else if (audioJSON.versions.indexOf('low') > -1) {
+            quality = 'low';
+        } else {
+            throw new Error('Wrong audio quality.');
+        }
+        return audioJSON.template.replace(/%{version}/g, quality);
+    }
+
+    function onAudioEnded() {
+        audio.currentTime = 0;
+        audio.play();
+    }
+
+    function onAudioLoadedData() {
+        audioLoaded = true;
+        if (canPlay()) {
+            video.play();
+        }
+    }
+
+    function setupAudioTag() {
+        var audioSource = getAudioSource();
+        if (audioSource == false) {
+            return;
+        }
+        audio.setAttribute('src', getAudioSource());
+        audio.addEventListener('ended', onAudioEnded, false);
+        audio.addEventListener('loadeddata', onAudioLoadedData, false);
+    }
+
+
+    function getVideoTagId() {
+        return 'html5video_' + json.permalink;
+    }
+
+    function getVideoMimeType() {
+        var videoJSON = json.file_versions.web,
+            fileMimeType;
+
+        if (videoJSON.types.indexOf('mp4') > -1) {
+            fileMimeType = 'video/mp4';
+        } else if (videoJSON.types.indexOf('flv') > -1) {
+            fileMimeType = 'video/x-flv';
+        } else {
+            throw new Error('Wrong video MIME type');
+        }
+
+        return fileMimeType;
+    }
+
+    function getVideoSource() {
+        var videoJSON = json.file_versions.web;
+
+        var fileType;
+        if (videoJSON.types.indexOf('mp4') > -1) {
+            fileType = 'mp4';
+        } else if (videoJSON.types.indexOf('flv') > -1) {
+            fileType = 'flv';
+        } else {
+            throw new Error('Wrong video file format');
+        }
+
+        var videoSize;
+        if (videoJSON.versions.indexOf('big') > -1) {
+            videoSize = 'big';
+        } else if (videoJSON.versions.indexOf('med') > -1) {
+            videoSize = 'med';
+        } else if (videoJSON.versions.indexOf('small') > -1) {
+            videoSize = 'small';
+        } else {
+            throw new Error('Wrong video size');
+        }
+
+        return videoJSON.template.replace(/%{type}/g, fileType).replace(/%{version}/g, videoSize);
+    }
+
+    function onVideoPlay() {
+        pauseAllVideo(getVideoTagId());
+        audio.play();
+    }
+
+    function onVideoPause() {
+        audio.pause();
+    }
+
+    function onVideoLoadedData() {
+        videoLoaded = true;
+        video.style.display = 'block';
+
+        if (canPlay()) {
+            pauseAllVideo(getVideoTagId());
+            video.play();
+        }
+    }
+
+    function setupVideoTag() {
+        var videoSource = document.createElement('source');
+        videoSource.setAttribute('src', getVideoSource());
+        videoSource.setAttribute('type', getVideoMimeType());
+        video.appendChild(videoSource);
+
+        video.style.display = 'none';
+        video.setAttribute('id', getVideoTagId());
+        video.setAttribute('class', 'html5video');
+        video.setAttribute('preload', 'auto');
+        video.setAttribute('controls', 'true');
+        video.setAttribute('loop', '');
+        var flashVideoWidth = flashObject.parentNode.parentNode.firstElementChild.offsetWidth,
+            flashVideoHeight = flashObject.parentNode.parentNode.firstElementChild.offsetHeight;
+        video.setAttribute('width', flashVideoWidth);
+        video.setAttribute('height', flashVideoHeight);
+
+        video.addEventListener('play', onVideoPlay, false);
+        video.addEventListener('pause', onVideoPause, false);
+        video.addEventListener('loadeddata', onVideoLoadedData, false);
+    }
 }
